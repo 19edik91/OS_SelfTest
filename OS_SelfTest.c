@@ -14,6 +14,7 @@
 #include "HAL_SelfTest_Stack.h"
 #include "HAL_SelfTest_TimeBase.h"
 #include "HAL_SelfTest_Memory.h"
+#include "HAL_SelfTest_CPU.h"
 
 /****************************************** Defines ******************************************************/
 //*******************************************
@@ -90,19 +91,12 @@ typedef struct
 
 
 /****************************************** Variables ****************************************************/
-
 static volatile u32 ulResetReason = 0;
 
 // Timertick counter
-static volatile u32 ulSfT_1msCnt_0;
-static volatile u32 ulSfT_1msCnt_1;
-static volatile u32 ulSfT_WDT1_Cnt_0;
-static volatile u32 ulSfT_WDT1_Cnt_1;
 static u32 ulSfT_Time_0 = 0;   //Self-Test start time tick
 static u32 ulSfT_Time_1 = 0;   //Duration result for the cyclic self test
 
-// Variables used in isr_1 test interrupt handler
-static volatile u32 uSfTtInterruptCnt;
 
 // Test State controlling the Sequence of Selftests
 static tsSelfTest_State sSfT_State;
@@ -166,10 +160,9 @@ void OS_SelfTest_StartCallback(void)
 {
 
     #if SELFTEST_S_ENABLE
-
         /***** do CPU Register test before memory initialization *******/
         #if EXEC_STARTUP_CPUREG
-            if(HAL_SelfTest_Memory_CpuReg())
+            if(HAL_SelfTest_CPU_Reg())
             {
                  while(1u);               // !!! Stop on error.
             }
@@ -177,7 +170,7 @@ void OS_SelfTest_StartCallback(void)
 
         /***** do CPU program counter test before memory initialization ******/
         #if EXEC_STARTUP_CPUPC
-            if (HAL_SelfTest_Memory_CpuPC())
+            if (HAL_SelfTest_CPU_PC())
             {
                 while(1u);                // !!! Stop on error.
             }
@@ -185,7 +178,7 @@ void OS_SelfTest_StartCallback(void)
 
         /****** do SRAM test before memory initialization *******/
         #if EXEC_STARTUP_RAM
-            if (eSelfTest_S_SramMarch())          // !!! don't return on error.
+            if (HAL_SelfTest_RAM())          // !!! don't return on error.
             {
                 while(1u);                // !!! Stop on error.
             }
@@ -193,20 +186,14 @@ void OS_SelfTest_StartCallback(void)
 
         /****** do Stack test before memory initialization *******/
         #if EXEC_STARTUP_STACK
-            if (eSelfTest_S_StackMarch())         // !!! don't return on error.
+            /* Initialize self-test stack */
+            HAL_SelfTest_Stack_Init();
+
+            if (HAL_SelfTest_Stack_Check())         // !!! don't return on error.
             {
                 while(1u);               // !!! Stop on error.
             }
         #endif
-
-        /****** do IO test before memory initialization *******/
-        #if EXEC_STARTUP_IO
-            if(eSelfTest_S_IO())
-            {
-                while(1u);                // !!! Stop on error.
-            }
-        #endif
-
     #endif  // SELFTEST_S_ENABLE
 
     /* Initialize standard memory */
@@ -215,10 +202,10 @@ void OS_SelfTest_StartCallback(void)
 
     #if SELFTEST_S_ENABLE
 
-        //***** do Interrupt test AFTER memory initialization
+        //***** do Interrupt and time-base test AFTER memory initialization
         // Using CyDelayUS needs initialized memory !!! //
         #if EXEC_STARTUP_INTERRUPT
-            if( eSelfTest_S_Interrupt() )
+            if(HAL_SelfTest_TimeBase())
             {
                 while(1u);                // !!! Stop on error.
             }
@@ -227,24 +214,15 @@ void OS_SelfTest_StartCallback(void)
         //***** do FLASH test AFTER memory initialization
         // Needs initialized memory !!! //
         #if EXEC_STARTUP_FLASH
-            if ( eSelfTest_S_FlashCRC()!= eSelfTest_OK )
+            if ( HAL_SelfTest_Flash()!= eSelfTest_OK )
             {
                 while(1u);               // !!! Stop on error.
             }
         #endif
 
-        //***** do UDB Config Register test AFTER memory initialization
-        // Needs initialised memory !!! //
-        #if EXEC_STARTUP_UREG
-            if ( eSelfTest_S_UReg()!= eSelfTest_OK )
-            {
-                while(1u);                // !!! Stop on error.
-            }
-        #endif
-
         //***** do ADC SAR test AFTER memory initialization ! //
         #if EXEC_STARTUP_ADC
-            if(eSelfTest_S_ADC())
+            if(HAL_SelfTest_ADC())
             {
                 while(1u);                // !!! Stop on error.
             }
@@ -252,7 +230,8 @@ void OS_SelfTest_StartCallback(void)
 
         //***** do UART_1 test AFTER memory initialization ! //
         #if EXEC_STARTUP_UART
-            if ( eSelfTest_S_UART_1() )
+            HAL_SelfTest_UART_Init()
+            if (HAL_SelfTest_UART_Check())
             {
                 while(1u);                // !!! Stop on error.
             }
@@ -260,11 +239,8 @@ void OS_SelfTest_StartCallback(void)
 
     #endif  // SELFTEST_S_ENABLE
 
-
-    #ifndef PST_EVALUATION
-         /* Start with OS-Main-Task */
-        ( void )main();
-    #endif
+     /* Start with OS-Main-Task */
+    (void)main();
 
     while(1);        // If main returns, make sure we don't return.
 }
@@ -297,7 +273,7 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             #if EXEC_CYCLIC_CPUREG == false
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
-                if(HAL_SelfTest_Memory_CpuReg() != eSelfTest_OK)
+                if(HAL_SelfTest_CPU_Reg() != eSelfTest_OK)
                 {
                     psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
                     while(1u);               // Stop on error
@@ -313,7 +289,7 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
                 psSfT_State->ulTestResult = 0u;
-                if(HAL_SelfTest_Memory_CpuPC() != eSelfTest_OK)
+                if(HAL_SelfTest_CPU_PC() != eSelfTest_OK)
                 {
                     psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
                     while(1u);      //Stop on error
@@ -330,13 +306,12 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             #if EXEC_CYCLIC_TIMEBASE == false
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
-                #if (CONTROL_LOW_VOLT == 1)
+                    /* Check for standby state */
                     if (Aom_GetPcmStandbyMode())
                     {
                         psSfT_State->eTestID += SELFTEST_ID_DELTA;
                     }
                     else
-                #endif
                     {
                         /* Interrupt test is - start with interrupt0_start up */
                         if(HAL_SelfTest_TimeBase() != eSelfTest_OK)
@@ -352,229 +327,225 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             break;
         }
 
-    case eSelfTest_ID_RAM0:         // Test the save buffer ( size of one tile )
-    {
-        #if EXEC_CYCLIC_RAM == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            if(SelfTest_March_Buffer(TEST_BUFFER_STARTADR, TEST_BLOCK_SRAM_SIZE) == ERROR_STATUS)
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u);  // Stop on error ( probably the test stops in situ )
-            }
-
-            psSfT_State->ulTestAddress = TEST_SRAM_STARTADR;      // Prepare the SRAM test
-            psSfT_State->ulTestSize = TEST_BLOCK_SRAM_SIZE;
-            psSfT_State->ulTestOffset = 0u;            // Start this session with offset 0
-            psSfT_State->eTestID = eSelfTest_ID_RAM1;
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_RAM1:
-    {
-        #if EXEC_CYCLIC_RAM == true
-            psSfT_State->ulTestResult = SelfTest_March_SRAM((psSfT_State->ulTestAddress + psSfT_State->ulTestOffset), psSfT_State->ulTestSize,TEST_SRAM_ENDADR);
-            psSfT_State->eTestID = eSelfTest_ID_RAM2;
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_RAM2:
-    {
-        #if EXEC_CYCLIC_RAM == true
-            if(psSfT_State->ulTestResult == PASS_STILL_TESTING_STATUS)
-            {
-                psSfT_State->ulTestAddress += psSfT_State->ulTestSize;
-                psSfT_State->eTestID = eSelfTest_ID_RAM1;
-            }
-            else if(psSfT_State->ulTestResult == PASS_COMPLETE_STATUS)
-            {
-                TestLog(eSelfTest_ID_STACK0, eSelfTest_OK);
-            }
-            else if(psSfT_State->ulTestResult == ERROR_STATUS)
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u);
-            }
-            else    // Program Error
-            {
-                while(1u);
-            }
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_STACK:                      // First test the save buffer
-    {
-        #if EXEC_CYCLIC_STACK == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            if(HAL_SelfTest_Stack_Check() == ERROR_STATUS)
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u);               // Stop on error
-            }
-            TestLog(eSelfTest_ID_STACKOVF, eSelfTest_OK);
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_STACKOVF:
-    {
-        #if EXEC_CYCLIC_STACKOVF == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            if(!(SelfTest_StackOverflow()))       // Stack limit test
-            {
-                TestLog(eSelfTest_ID_FLASH0, eSelfTest_OK);
-            }
-            else
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u);    // Stop on error
-            }
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_FLASH0:         // Test Segments 1 - 4, 0 is not used here
-    {
-        #if EXEC_CYCLIC_FLASH == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            psSfT_State->ulTestOffset = ST_FLASH_SEGIDX_S1;      // Used as segment number
-            psSfT_State->slTestCount = uAppCodeLength;       // Used as overall byte count
-
-            if(0 == psSfT_State->slTestCount)
-            {
-                psSfT_State->eTestID += SELFTEST_ID_DELTA;             // Go to next test
-            }
-            else
-            {
-                psSfT_State->ulTestAddress = uAppCodeStart;       // Start with segment 1
-                psSfT_State->ulTestResult = CRC_INIT_VALUE;
-                psSfT_State->eTestID = eSelfTest_ID_FLASH1;          // Execute CRC check
-            }
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_FLASH1:
-    {
-        #if EXEC_CYCLIC_FLASH == true
-            if(psSfT_State->slTestCount > (s32)ST_FLASH_TILE_SIZE)  // Not null
-            {
-                psSfT_State->ulTestSize = ST_FLASH_TILE_SIZE; // Number of bytes is bigger than a tile size
-            }
-            else
-            {
-                psSfT_State->ulTestSize = psSfT_State->slTestCount; // Number of bytes is already equal or smaller than a tile size
-            }
-            psSfT_State->ulTestResult = eSelfTest_C_FlashCRC((u8*)psSfT_State->ulTestAddress, psSfT_State->ulTestSize, psSfT_State->ulTestResult);
-            psSfT_State->slTestCount = psSfT_State->slTestCount - ST_FLASH_TILE_SIZE;
-
-            if(psSfT_State->slTestCount < 1)             // If it has reached 0 now, check CRC
-            {
-                if(SelfTest_FlashCRCRead(psSfT_State->ulTestOffset) != ~psSfT_State->ulTestResult) // Compare with last inversion
+        case eSelfTest_ID_RAM0:         // Test the save buffer ( size of one tile )
+        {
+            #if EXEC_CYCLIC_RAM == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                if(SelfTest_March_Buffer(TEST_BUFFER_STARTADR, TEST_BLOCK_SRAM_SIZE) == ERROR_STATUS)
                 {
                     psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                    while(1u);           // Stop on CRC error
+                    while(1u);  // Stop on error ( probably the test stops in situ )
                 }
-                TestLog(eSelfTest_ID_IO0, eSelfTest_OK);
-            }
-            else
-            {
-                psSfT_State->ulTestAddress += ST_FLASH_TILE_SIZE;  // Next row in same segment
-            }
-        #endif
-        break;
-    }
 
-    case eSelfTest_ID_IO0:
-    {
-        #if EXEC_CYCLIC_IO == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            psSfT_State->ulTestOffset = 0u;                // Use TestOffset as PortNumber
-            psSfT_State->eTestID = eSelfTest_ID_IO1;
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_IO1:
-    {
-        #if EXEC_CYCLIC_IO == true
-            if(eSelfTest_C_IO(psSfT_State->ulTestOffset) != eSelfTest_OK) // TestOffset holds the port number
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u);           // Stop on error
-            }
-            psSfT_State->ulTestOffset++;                              // Increment PortNumber
-
-            if(psSfT_State->ulTestOffset >= IO_PORTS)             // Max port index reached ?
-            {
-                TestLog(eSelfTest_ID_UREG0, eSelfTest_OK);
-            }
-        #endif
-        break;
-    }
-
-    case eSelfTest_ID_ADC0:                                 // ADC test
-    {
-        /* If ADC-Test is disabled skip this test an test UART0 */
-        #if EXEC_CYCLIC_ADC == false
-            psSfT_State->eTestID += SELFTEST_ID_DELTA;
-        #else
-            // If ADC is in use, this adds extra ADC conversion cycles, which may influence regular conversion results !
-            if(eSelfTest_S_ADC())
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u)
-                {
-                }                        // Stop on error
-            }
-            TestLog(eSelfTest_ID_UART0, eSelfTest_OK);
+                psSfT_State->ulTestAddress = TEST_SRAM_STARTADR;      // Prepare the SRAM test
+                psSfT_State->ulTestSize = TEST_BLOCK_SRAM_SIZE;
+                psSfT_State->ulTestOffset = 0u;            // Start this session with offset 0
+                psSfT_State->eTestID = eSelfTest_ID_RAM1;
+            #endif
+            break;
         }
-        #endif
-        break;
-    }
 
-    case eSelfTest_ID_UART0:                                // UART test
-    {
-        #if EXEC_CYCLIC_UART == false
-           psSfT_State->eTestID += SELFTEST_ID_DELTA;
-       #else
-            // Do NOT use UART test!
-            // Communication on Wolf Bus is life test, do not disturb with extra characters !
-            if(eSelfTest_S_UART_1())
-            {
-                psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
-                while(1u)
+        case eSelfTest_ID_RAM1:
+        {
+            #if EXEC_CYCLIC_RAM == true
+                psSfT_State->ulTestResult = SelfTest_March_SRAM((psSfT_State->ulTestAddress + psSfT_State->ulTestOffset), psSfT_State->ulTestSize,TEST_SRAM_ENDADR);
+                psSfT_State->eTestID = eSelfTest_ID_RAM2;
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_RAM2:
+        {
+            #if EXEC_CYCLIC_RAM == true
+                if(psSfT_State->ulTestResult == PASS_STILL_TESTING_STATUS)
                 {
-                }                        // Stop on error
-            }
-            else
-            {
-                TestLog(eSelfTest_ID_EXIT, eSelfTest_OK);
-            }
-        #endif
-        break;
-    }
+                    psSfT_State->ulTestAddress += psSfT_State->ulTestSize;
+                    psSfT_State->eTestID = eSelfTest_ID_RAM1;
+                }
+                else if(psSfT_State->ulTestResult == PASS_COMPLETE_STATUS)
+                {
+                    TestLog(eSelfTest_ID_STACK0, eSelfTest_OK);
+                }
+                else if(psSfT_State->ulTestResult == ERROR_STATUS)
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);
+                }
+                else    // Program Error
+                {
+                    while(1u);
+                }
+            #endif
+            break;
+        }
 
-    case eSelfTest_ID_EXIT: // Not a real test. Terminates the sequence of real tests.
-    {
-         // If enabled creates testpattern to locate end of test sequence
-        psSfT_State->eTestID = eSelfTest_ID_INIT;
-        TestLog(eSelfTest_ID_INIT, eSelfTest_NotExecuted);
-        ulSfT_Time_1 = TMGR_GetSystemTickCount() - ulSfT_Time_0; // Time in msec for the duration of all cyclic self tests
-        break;
-    }
+        case eSelfTest_ID_STACK:                      // First test the save buffer
+        {
+            #if EXEC_CYCLIC_STACK == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                if(HAL_SelfTest_Stack_Check() == ERROR_STATUS)
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);               // Stop on error
+                }
+                TestLog(eSelfTest_ID_STACKOVF, eSelfTest_OK);
+            #endif
+            break;
+        }
 
-    default:                                            // Should not happen
-    {
-        psSfT_State->eTestID = eSelfTest_ID_INIT;
-    }
+        case eSelfTest_ID_STACKOVF:
+        {
+            #if EXEC_CYCLIC_STACKOVF == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                if(!(SelfTest_StackOverflow()))       // Stack limit test
+                {
+                    TestLog(eSelfTest_ID_FLASH0, eSelfTest_OK);
+                }
+                else
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);    // Stop on error
+                }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_FLASH0:         // Test Segments 1 - 4, 0 is not used here
+        {
+            #if EXEC_CYCLIC_FLASH == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                psSfT_State->ulTestOffset = ST_FLASH_SEGIDX_S1;      // Used as segment number
+                psSfT_State->slTestCount = uAppCodeLength;       // Used as overall byte count
+
+                if(0 == psSfT_State->slTestCount)
+                {
+                    psSfT_State->eTestID += SELFTEST_ID_DELTA;             // Go to next test
+                }
+                else
+                {
+                    psSfT_State->ulTestAddress = uAppCodeStart;       // Start with segment 1
+                    psSfT_State->ulTestResult = CRC_INIT_VALUE;
+                    psSfT_State->eTestID = eSelfTest_ID_FLASH1;          // Execute CRC check
+                }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_FLASH1:
+        {
+            #if EXEC_CYCLIC_FLASH == true
+                if(psSfT_State->slTestCount > (s32)ST_FLASH_TILE_SIZE)  // Not null
+                {
+                    psSfT_State->ulTestSize = ST_FLASH_TILE_SIZE; // Number of bytes is bigger than a tile size
+                }
+                else
+                {
+                    psSfT_State->ulTestSize = psSfT_State->slTestCount; // Number of bytes is already equal or smaller than a tile size
+                }
+                psSfT_State->ulTestResult = eSelfTest_C_FlashCRC((u8*)psSfT_State->ulTestAddress, psSfT_State->ulTestSize, psSfT_State->ulTestResult);
+                psSfT_State->slTestCount = psSfT_State->slTestCount - ST_FLASH_TILE_SIZE;
+
+                if(psSfT_State->slTestCount < 1)             // If it has reached 0 now, check CRC
+                {
+                    if(SelfTest_FlashCRCRead(psSfT_State->ulTestOffset) != ~psSfT_State->ulTestResult) // Compare with last inversion
+                    {
+                        psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                        while(1u);           // Stop on CRC error
+                    }
+                    TestLog(eSelfTest_ID_IO0, eSelfTest_OK);
+                }
+                else
+                {
+                    psSfT_State->ulTestAddress += ST_FLASH_TILE_SIZE;  // Next row in same segment
+                }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_IO0:
+        {
+            #if EXEC_CYCLIC_IO == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                psSfT_State->ulTestOffset = 0u;                // Use TestOffset as PortNumber
+                psSfT_State->eTestID = eSelfTest_ID_IO1;
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_IO1:
+        {
+            #if EXEC_CYCLIC_IO == true
+                if(eSelfTest_C_IO(psSfT_State->ulTestOffset) != eSelfTest_OK) // TestOffset holds the port number
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);           // Stop on error
+                }
+                psSfT_State->ulTestOffset++;                              // Increment PortNumber
+
+                if(psSfT_State->ulTestOffset >= IO_PORTS)             // Max port index reached ?
+                {
+                    TestLog(eSelfTest_ID_UREG0, eSelfTest_OK);
+                }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_ADC0:                                 // ADC test
+        {
+            /* If ADC-Test is disabled skip this test an test UART0 */
+            #if EXEC_CYCLIC_ADC == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                // If ADC is in use, this adds extra ADC conversion cycles, which may influence regular conversion results !
+                if(eSelfTest_S_ADC())
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);  // Stop on error
+                }
+                TestLog(eSelfTest_ID_UART0, eSelfTest_OK);
+            }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_UART0:                                // UART test
+        {
+            #if EXEC_CYCLIC_UART == false
+               psSfT_State->eTestID += SELFTEST_ID_DELTA;
+           #else
+                // Do NOT use UART test!
+                // Communication on Wolf Bus is life test, do not disturb with extra characters !
+                if(HAL_SelfTest_UART_Check())
+                {
+                    psSfT_Log->sActualResult.eResultCode  = eSelfTest_ERROR;
+                    while(1u);// Stop on error
+                }
+                else
+                {
+                    TestLog(eSelfTest_ID_EXIT, eSelfTest_OK);
+                }
+            #endif
+            break;
+        }
+
+        case eSelfTest_ID_EXIT: // Not a real test. Terminates the sequence of real tests.
+        {
+             // If enabled creates testpattern to locate end of test sequence
+            psSfT_State->eTestID = eSelfTest_ID_INIT;
+            TestLog(eSelfTest_ID_INIT, eSelfTest_NotExecuted);
+            ulSfT_Time_1 = OS_SW_Timer_GetSystemTickCount() - ulSfT_Time_0; // Time in msec for the duration of all cyclic self tests
+            break;
+        }
+
+        default:                                            // Should not happen
+        {
+            psSfT_State->eTestID = eSelfTest_ID_INIT;
+        }
 
     } // end switch (  psSfT_State->eTestID )
 }
