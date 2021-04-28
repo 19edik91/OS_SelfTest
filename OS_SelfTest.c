@@ -9,6 +9,7 @@
 
 #include "OS_SelfTest.h"
 #include "OS_ErrorDebouncer.h"
+#include "OS_StateManager.h"
 
 #include "HAL_MemoryInit.h"
 #include "HAL_SelfTest_Stack.h"
@@ -306,12 +307,15 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             #if EXEC_CYCLIC_TIMEBASE == false
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
+                    #warning check in standby state
                     /* Check for standby state */
-                    if (Aom_GetPcmStandbyMode())
+                    #if 0
+                    if (OS_StateManager_GetCurrentState() == eSM_State_Reset)
                     {
                         psSfT_State->eTestID += SELFTEST_ID_DELTA;
                     }
                     else
+                    #endif
                     {
                         /* Interrupt test is - start with interrupt0_start up */
                         if(HAL_SelfTest_TimeBase() != eSelfTest_OK)
