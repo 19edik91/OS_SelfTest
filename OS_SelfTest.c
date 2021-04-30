@@ -120,7 +120,7 @@ extern u32 ulAppCodeStart;
 /****************************************** Function prototypes ******************************************/
 
 extern u32 OS_SW_Timer_GetSystemTickCount( void );
-
+extern int main(void);
 /****************************************** local functions *********************************************/
 
 
