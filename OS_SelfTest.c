@@ -10,11 +10,13 @@
 #include "OS_SelfTest.h"
 #include "OS_ErrorDebouncer.h"
 #include "OS_StateManager.h"
+#include "SelfTest_Config.h"
 
 #include "HAL_MemoryInit.h"
+#include "HAL_SelfTest_CPU.h"
 #include "HAL_SelfTest_Stack.h"
 #include "HAL_SelfTest_TimeBase.h"
-#include "HAL_SelfTest_CPU.h"
+#include "HAL_SelfTest_UART.h"
 
 /****************************************** Defines ******************************************************/
 //*******************************************
