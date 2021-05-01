@@ -14,7 +14,6 @@
 #include "HAL_MemoryInit.h"
 #include "HAL_SelfTest_Stack.h"
 #include "HAL_SelfTest_TimeBase.h"
-#include "HAL_SelfTest_Memory.h"
 #include "HAL_SelfTest_CPU.h"
 
 /****************************************** Defines ******************************************************/
