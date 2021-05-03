@@ -43,7 +43,8 @@ typedef enum                                 // Always seperate additional tests
    eSelfTest_ID_INIT   = 0u,                                            // STest init
    eSelfTest_ID_CPUREG = eSelfTest_ID_INIT + SELFTEST_ID_DELTA,         // STest CPU register
    eSelfTest_ID_CPUPC = eSelfTest_ID_CPUREG + SELFTEST_ID_DELTA,        // STest CPU program counter
-   eSelfTest_ID_TIMEBASE = eSelfTest_ID_CPUPC + SELFTEST_ID_DELTA,    // STest Timebase test
+   eSelfTest_ID_TIMEBASE = eSelfTest_ID_CPUPC + SELFTEST_ID_DELTA,    // STest Timebase test init function
+   eSelfTest_ID_TIMEBASE1,                                              //STest timebase test
    eSelfTest_ID_RAM0 = eSelfTest_ID_TIMEBASE + SELFTEST_ID_DELTA,     // STest SRAM area
    eSelfTest_ID_RAM1,                                                   // STest SRAM exec
    eSelfTest_ID_RAM2,                                                   // STest SRAM exec
@@ -238,6 +239,14 @@ void OS_SelfTest_StartCallback(void)
                 while(1u);                // !!! Stop on error.
             }
         #endif
+        
+        //***** do Time base self-test !//
+        #if EXEC_STARTUP_TIMEBASE
+            if(HAL_SelfTest_TimeBase_StartUp())
+            {
+                while(1u);               // !!! Stop on error 
+            }            
+        #endif
 
     #endif  // SELFTEST_S_ENABLE
 
@@ -319,7 +328,7 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
                     #endif
                     {
                         /* Interrupt test is - start with interrupt0_start up */
-                        if(HAL_SelfTest_TimeBase() != eSelfTest_OK)
+                        if(HAL_SelfTest_TimeBase_CyclicInit() != eSelfTest_OK)
                         {
                             psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
                             while(1u);                // Stop on error
@@ -327,6 +336,44 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
 
                         /* Next test state is interrupt 1 */
                         TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
+                    }
+            #endif
+            break;
+        }
+        
+        case eSelfTest_ID_TIMEBASE1:                  // STest  timebase
+        {
+            /* If cyclic interrupt test is disabled, jump over to eSelfTest_ID_RAM0 */
+            #if EXEC_CYCLIC_TIMEBASE == false
+                psSfT_State->eTestID += SELFTEST_ID_DELTA;
+            #else
+                    #warning check in standby state
+                    /* Check for standby state */
+                    #if 0
+                    if (OS_StateManager_GetCurrentState() == eSM_State_Reset)
+                    {
+                        psSfT_State->eTestID += SELFTEST_ID_DELTA;
+                    }
+                    else
+                    #endif
+                    {
+                        /* Interrupt test is - start with interrupt0_start up */
+                        u8 ucTestResult = HAL_SelfTest_TimeBase_CyclicTest();
+                        
+                        if(ucTestResult == eSelfTest_ERROR)
+                        {
+                            psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
+                            while(1u);                // Stop on error
+                        }
+                        else if(ucTestResult == eSelfTest_OK)
+                        {
+                            /* Next test state is interrupt 1 */
+                            TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
+                        }
+                        else
+                        {
+                            //Test is still pending. 
+                        }
                     }
             #endif
             break;
