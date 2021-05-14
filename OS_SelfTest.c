@@ -17,6 +17,7 @@
 #include "HAL_SelfTest_Stack.h"
 #include "HAL_SelfTest_TimeBase.h"
 #include "HAL_SelfTest_UART.h"
+#include "HAL_Timer.h"
 
 /****************************************** Defines ******************************************************/
 //*******************************************
@@ -317,26 +318,23 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             #if EXEC_CYCLIC_TIMEBASE == false
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
-                    #warning check in standby state
-                    /* Check for standby state */
-                    #if 0
-                    if (OS_StateManager_GetCurrentState() == eSM_State_Reset)
+                /* Check for disabled sys-tick timer */
+                if (HAL_Timer_GetTimerStatus() == false)
+                {
+                    psSfT_State->eTestID += SELFTEST_ID_DELTA;
+                }
+                else
+                {
+                    /* Interrupt test is - start with interrupt0_start up */
+                    if(HAL_SelfTest_TimeBase_CyclicInit() != eSelfTest_OK)
                     {
-                        psSfT_State->eTestID += SELFTEST_ID_DELTA;
+                        psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
+                        while(1u);                // Stop on error
                     }
-                    else
-                    #endif
-                    {
-                        /* Interrupt test is - start with interrupt0_start up */
-                        if(HAL_SelfTest_TimeBase_CyclicInit() != eSelfTest_OK)
-                        {
-                            psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
-                            while(1u);                // Stop on error
-                        }
 
-                        /* Next test state is interrupt 1 */
-                        TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
-                    }
+                    /* Next test state is interrupt 1 */
+                    TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
+                }
             #endif
             break;
         }
@@ -347,34 +345,31 @@ void OS_SelfTest_Cyclic_Run(void)                       // Run the sequence of c
             #if EXEC_CYCLIC_TIMEBASE == false
                 psSfT_State->eTestID += SELFTEST_ID_DELTA;
             #else
-                    #warning check in standby state
-                    /* Check for standby state */
-                    #if 0
-                    if (OS_StateManager_GetCurrentState() == eSM_State_Reset)
+                /* Check for disabled sys-tick timer */
+                if (HAL_Timer_GetTimerStatus() == false)
+                {
+                    psSfT_State->eTestID += SELFTEST_ID_DELTA;
+                }
+                else
+                {
+                    /* Interrupt test is - start with interrupt0_start up */
+                    u8 ucTestResult = HAL_SelfTest_TimeBase_CyclicTest();
+                    
+                    if(ucTestResult == eSelfTest_ERROR)
                     {
-                        psSfT_State->eTestID += SELFTEST_ID_DELTA;
+                        psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
+                        while(1u);                // Stop on error
+                    }
+                    else if(ucTestResult == eSelfTest_OK)
+                    {
+                        /* Next test state is interrupt 1 */
+                        TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
                     }
                     else
-                    #endif
                     {
-                        /* Interrupt test is - start with interrupt0_start up */
-                        u8 ucTestResult = HAL_SelfTest_TimeBase_CyclicTest();
-                        
-                        if(ucTestResult == eSelfTest_ERROR)
-                        {
-                            psSfT_Log->sActualResult.eResultCode = eSelfTest_ERROR;
-                            while(1u);                // Stop on error
-                        }
-                        else if(ucTestResult == eSelfTest_OK)
-                        {
-                            /* Next test state is interrupt 1 */
-                            TestLog(eSelfTest_ID_RAM0, eSelfTest_OK);
-                        }
-                        else
-                        {
-                            //Test is still pending. 
-                        }
+                        //Test is still pending. 
                     }
+                }
             #endif
             break;
         }
