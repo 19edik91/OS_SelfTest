@@ -8,6 +8,9 @@
 */
 
 #include "OS_SelfTest.h"
+
+#ifdef USE_SELFTEST
+
 #include "OS_ErrorDebouncer.h"
 #include "OS_StateManager.h"
 #include "SelfTest_Config.h"
@@ -617,3 +620,5 @@ void OS_SelfTest_InitCyclic(void)                         // Prepare the sequenc
     psSfT_State->slTestCount = 0u;
     psSfT_State->ulTestOffset = 0u;
 }
+
+#endif

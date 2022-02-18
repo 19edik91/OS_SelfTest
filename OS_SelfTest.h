@@ -18,6 +18,8 @@ extern "C"
 #include "BaseTypes.h"
 #include "OS_Config.h"
 
+
+#ifdef USE_SELFTEST
 /**************************************************************
 *
 * Tests routines are executed at startup or during normal operation.
@@ -87,6 +89,7 @@ void OS_SelfTest_InitCyclic(void);
 void OS_SelfTest_Cyclic_Run(void);
 void OS_SelfTest_StartCallback(void);
 
+#endif
 
 #ifdef __cplusplus
 }
